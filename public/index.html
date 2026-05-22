@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log Analyzer Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap');
+
+  :root {
+    --bg:       #0d0f14;
+    --surface:  #141720;
+    --border:   #1e2230;
+    --accent:   #00e5ff;
+    --warn:     #ffb300;
+    --danger:   #ff4444;
+    --success:  #00c896;
+    --muted:    #4a5168;
+    --text:     #c8cfe0;
+    --heading:  #eef1f8;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  header h1 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .badge {
+    background: var(--border);
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 3px;
+  }
+
+  .badge.live { color: var(--success); border: 1px solid var(--success); background: transparent; }
+
+  main {
+    padding: 24px 32px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+
+  /* ── Grid layout ── */
+  .grid {
+    display: grid;
+    gap: 16px;
+  }
+  .grid-4 { grid-template-columns: repeat(4, 1fr); }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  .grid-2-1 { grid-template-columns: 2fr 1fr; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px;
+  }
+
+  .card-header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .card-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+  }
+
+  /* ── Stat tiles ── */
+  .stat-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 32px;
+    font-weight: 600;
+    color: var(--heading);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .stat-label {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .stat-sub {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    margin-top: 6px;
+  }
+
+  .text-accent  { color: var(--accent); }
+  .text-warn    { color: var(--warn); }
+  .text-danger  { color: var(--danger); }
+  .text-success { color: var(--success); }
+  .text-muted   { color: var(--muted); }
+
+  /* ── Tables ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+  }
+
+  th {
+    text-align: left;
+    color: var(--muted);
+    font-weight: 400;
+    font-size: 11px;
+    padding: 0 8px 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  td {
+    padding: 7px 8px 7px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    vertical-align: middle;
+  }
+
+  tr:last-child td { border-bottom: none; }
+
+  /* ── Bar chart (inline) ── */
+  .inline-bar {
+    display: inline-block;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--accent);
+    vertical-align: middle;
+    margin-right: 8px;
+    transition: width 0.3s;
+  }
+
+  /* ── Status pill ── */
+  .pill {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .pill-2xx { background: rgba(0,200,150,0.15); color: var(--success); }
+  .pill-3xx { background: rgba(0,229,255,0.15); color: var(--accent); }
+  .pill-4xx { background: rgba(255,179,0,0.15);  color: var(--warn); }
+  .pill-5xx { background: rgba(255,68,68,0.15);   color: var(--danger); }
+  .pill-other { background: rgba(74,81,104,0.3); color: var(--muted); }
+
+  /* ── Perf bars ── */
+  .perf-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 8px;
+  }
+
+  .perf-segment {
+    height: 8px;
+    border-radius: 2px;
+    display: inline-block;
+  }
+
+  /* ── Skip reasons ── */
+  .skip-list { list-style: none; }
+  .skip-list li {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+
+  /* spacing */
+  .mt-16 { margin-top: 16px; }
+  .mt-24 { margin-top: 24px; }
+  .mb-8  { margin-bottom: 8px; }
+
+  .section-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 28px 0 12px;
+  }
+
+  canvas { display: block; }
+
+  #loading {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .spinner {
+    width: 24px; height: 24px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 1100px) {
+    .grid-4 { grid-template-columns: repeat(2, 1fr); }
+    .grid-3 { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 700px) {
+    .grid-4, .grid-3, .grid-2, .grid-2-1 { grid-template-columns: 1fr; }
+    main { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <span>Loading report…</span>
+</div>
+
+<div id="app" style="display:none">
+
+<header>
+  <h1>⬡ Log Analyzer</h1>
+  <span class="badge" id="hdr-range">—</span>
+  <span class="badge live" id="hdr-rps">— req/s</span>
+</header>
+
+<main>
+
+  <!-- KPI tiles -->
+  <div class="grid grid-4">
+    <div class="card">
+      <div class="stat-label">Total Requests</div>
+      <div class="stat-value" id="kpi-total">—</div>
+      <div class="stat-sub text-muted" id="kpi-parsed">—</div>
+    </div>
+    <div class="card">
+      <div class="stat-label">Error Rate (4xx+5xx)</div>
+      <div class="stat-value" id="kpi-errrate">—</div>
+      <div class="stat-sub" id="kpi-errcounts">—</div>
+    </div>
+    <div class="card">
+      <div class="stat-label">Median Response Time</div>
+      <div class="stat-value" id="kpi-p50">—</div>
+      <div class="stat-sub text-muted" id="kpi-p95">—</div>
+    </div>
+    <div class="card">
+      <div class="stat-label">Skipped Lines</div>
+      <div class="stat-value text-muted" id="kpi-skipped">—</div>
+      <div class="stat-sub text-muted" id="kpi-skiprate">—</div>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="mt-16 card">
+    <div class="card-header">
+      <span class="card-title">Request Volume Over Time</span>
+    </div>
+    <canvas id="chart-timeline" height="90"></canvas>
+  </div>
+
+  <!-- Status + Methods row -->
+  <div class="grid grid-2 mt-16">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Status Code Breakdown</span></div>
+      <canvas id="chart-status" height="180"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">HTTP Methods</span></div>
+      <canvas id="chart-methods" height="180"></canvas>
+    </div>
+  </div>
+
+  <!-- Top endpoints + Slowest -->
+  <div class="grid grid-2 mt-16">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Top Endpoints by Volume</span></div>
+      <table>
+        <thead><tr><th>Path</th><th style="text-align:right">Requests</th></tr></thead>
+        <tbody id="tbl-top-endpoints"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Slowest Endpoints (p95)</span></div>
+      <table>
+        <thead><tr><th>Path</th><th>p50</th><th>p95</th><th style="text-align:right">Max</th></tr></thead>
+        <tbody id="tbl-slow-endpoints"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Error endpoints + Top IPs -->
+  <div class="grid grid-2-1 mt-16">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Error Endpoints</span></div>
+      <table>
+        <thead><tr>
+          <th>Path</th>
+          <th>5xx</th><th>4xx</th>
+          <th style="text-align:right">Error Rate</th>
+        </tr></thead>
+        <tbody id="tbl-error-endpoints"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Top IPs</span></div>
+      <table>
+        <thead><tr><th>IP Address</th><th style="text-align:right">Requests</th></tr></thead>
+        <tbody id="tbl-top-ips"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Response time dist + Parse stats -->
+  <div class="grid grid-2 mt-16">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Response Time Percentiles</span></div>
+      <canvas id="chart-rtimes" height="160"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Parse Quality</span></div>
+      <div id="parse-quality-content"></div>
+    </div>
+  </div>
+
+</main>
+</div>
+
+<script>
+const CHART_DEFAULTS = {
+  color: '#c8cfe0',
+  borderColor: '#1e2230',
+};
+
+Chart.defaults.color = '#4a5168';
+Chart.defaults.borderColor = '#1e2230';
+Chart.defaults.font.family = "'IBM Plex Mono', monospace";
+Chart.defaults.font.size = 11;
+
+function fmt(n) { return n == null ? '—' : Number(n).toLocaleString(); }
+function fmtMs(ms) {
+  if (ms == null) return '—';
+  if (ms >= 1000) return (ms/1000).toFixed(2) + 's';
+  return ms.toFixed(0) + 'ms';
+}
+
+function statusClass(code) {
+  const c = parseInt(code, 10);
+  if (c >= 500) return 'pill-5xx';
+  if (c >= 400) return 'pill-4xx';
+  if (c >= 300) return 'pill-3xx';
+  if (c >= 200) return 'pill-2xx';
+  return 'pill-other';
+}
+
+function msColor(ms) {
+  if (ms == null) return '#4a5168';
+  if (ms >= 1000) return '#ff4444';
+  if (ms >= 300)  return '#ffb300';
+  return '#00c896';
+}
+
+async function loadAndRender() {
+  const res = await fetch('/api/report');
+  const r   = await res.json();
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+
+  const s = r.summary;
+
+  // Header
+  if (s.timeRange.from) {
+    document.getElementById('hdr-range').textContent =
+      s.timeRange.from.slice(0,10) + ' → ' + s.timeRange.to.slice(0,10);
+  }
+  document.getElementById('hdr-rps').textContent = (s.requestsPerSec ?? '—') + ' req/s';
+
+  // KPIs
+  document.getElementById('kpi-total').textContent   = fmt(s.parsedLines);
+  document.getElementById('kpi-parsed').textContent  =
+    fmt(s.skippedLines) + ' skipped / ' + fmt(s.totalLines) + ' total lines';
+
+  // Error rate
+  const statCodes = r.statusCodes;
+  let total4xx = 0, total5xx = 0, total2xx = 0;
+  for (const [code, cnt] of Object.entries(statCodes)) {
+    const c = parseInt(code);
+    if (c >= 500) total5xx += cnt;
+    else if (c >= 400) total4xx += cnt;
+    else if (c >= 200) total2xx += cnt;
+  }
+  const totalReqs = s.parsedLines || 1;
+  const errRate   = ((total4xx + total5xx) / totalReqs * 100).toFixed(1);
+  const errEl = document.getElementById('kpi-errrate');
+  errEl.textContent = errRate + '%';
+  errEl.className   = 'stat-value ' + (parseFloat(errRate) > 5 ? 'text-danger' : parseFloat(errRate) > 1 ? 'text-warn' : 'text-success');
+  document.getElementById('kpi-errcounts').innerHTML =
+    `<span style="color:#ff4444">${fmt(total5xx)} 5xx</span>  <span style="color:#ffb300">${fmt(total4xx)} 4xx</span>`;
+
+  // Response time
+  const rt = r.responseTimeSummary;
+  if (rt) {
+    const p50El = document.getElementById('kpi-p50');
+    p50El.textContent  = fmtMs(rt.p50);
+    p50El.style.color  = msColor(rt.p50);
+    document.getElementById('kpi-p95').textContent = 'p95: ' + fmtMs(rt.p95) + '  p99: ' + fmtMs(rt.p99);
+  }
+
+  // Skipped
+  document.getElementById('kpi-skipped').textContent = fmt(s.skippedLines);
+  document.getElementById('kpi-skiprate').textContent =
+    ((s.skippedLines / (s.totalLines||1)) * 100).toFixed(1) + '% of all lines';
+
+  // ── Timeline chart ──
+  const tl = r.timeline.slice(-500); // cap at 500 buckets for perf
+  new Chart(document.getElementById('chart-timeline'), {
+    type: 'line',
+    data: {
+      labels: tl.map(d => d.time.slice(11)), // time part only
+      datasets: [
+        {
+          label: 'Requests',
+          data: tl.map(d => d.requests),
+          borderColor: '#00e5ff',
+          backgroundColor: 'rgba(0,229,255,0.08)',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          fill: true,
+          tension: 0.3,
+        },
+        {
+          label: 'Errors',
+          data: tl.map(d => d.errors),
+          borderColor: '#ff4444',
+          backgroundColor: 'rgba(255,68,68,0.08)',
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: true,
+          tension: 0.3,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 12 }, grid: { color: '#1e2230' } },
+        y: { beginAtZero: true, grid: { color: '#1e2230' } },
+      },
+    },
+  });
+
+  // ── Status donut ──
+  const statusEntries = Object.entries(statCodes);
+  const statusColors  = statusEntries.map(([c]) => {
+    const n = parseInt(c);
+    if (n >= 500) return '#ff4444';
+    if (n >= 400) return '#ffb300';
+    if (n >= 300) return '#00e5ff';
+    return '#00c896';
+  });
+  new Chart(document.getElementById('chart-status'), {
+    type: 'doughnut',
+    data: {
+      labels: statusEntries.map(([c]) => c),
+      datasets: [{ data: statusEntries.map(([,v]) => v), backgroundColor: statusColors, borderWidth: 0 }],
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      plugins: { legend: { position: 'right' } },
+      cutout: '65%',
+    },
+  });
+
+  // ── Methods bar ──
+  const methodEntries = Object.entries(r.methods);
+  new Chart(document.getElementById('chart-methods'), {
+    type: 'bar',
+    data: {
+      labels: methodEntries.map(([m]) => m),
+      datasets: [{
+        data: methodEntries.map(([,v]) => v),
+        backgroundColor: ['#00e5ff','#00c896','#ffb300','#ff4444','#a78bfa','#f472b6'],
+        borderWidth: 0,
+        borderRadius: 3,
+      }],
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true, grid: { color: '#1e2230' } },
+      },
+    },
+  });
+
+  // ── Top endpoints table ──
+  const topTbody = document.getElementById('tbl-top-endpoints');
+  const topMax   = r.topEndpoints[0]?.count || 1;
+  for (const { key, count } of r.topEndpoints) {
+    const pct = (count / topMax * 100).toFixed(0);
+    topTbody.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${key}">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="inline-bar" style="width:${pct}px;max-width:80px"></span>
+            ${key}
+          </div>
+        </td>
+        <td style="text-align:right;color:#eef1f8">${fmt(count)}</td>
+      </tr>`);
+  }
+
+  // ── Slowest endpoints ──
+  const slowTbody = document.getElementById('tbl-slow-endpoints');
+  for (const e of r.slowestEndpoints) {
+    slowTbody.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${e.path}">${e.path}</td>
+        <td style="color:${msColor(e.p50)}">${fmtMs(e.p50)}</td>
+        <td style="color:${msColor(e.p95)}">${fmtMs(e.p95)}</td>
+        <td style="text-align:right;color:${msColor(e.max)}">${fmtMs(e.max)}</td>
+      </tr>`);
+  }
+
+  // ── Error endpoints ──
+  const errTbody = document.getElementById('tbl-error-endpoints');
+  if (r.errorEndpoints.length === 0) {
+    errTbody.insertAdjacentHTML('beforeend', `<tr><td colspan="4" style="color:#4a5168;padding:12px 0">No errors recorded</td></tr>`);
+  }
+  for (const e of r.errorEndpoints) {
+    const rateColor = e.errorRate > 20 ? '#ff4444' : e.errorRate > 5 ? '#ffb300' : '#c8cfe0';
+    errTbody.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${e.path}">${e.path}</td>
+        <td style="color:#ff4444">${fmt(e.total5xx)}</td>
+        <td style="color:#ffb300">${fmt(e.total4xx)}</td>
+        <td style="text-align:right;color:${rateColor}">${e.errorRate}%</td>
+      </tr>`);
+  }
+
+  // ── Top IPs ──
+  const ipTbody = document.getElementById('tbl-top-ips');
+  const ipMax   = r.topIPs[0]?.count || 1;
+  for (const { key, count } of r.topIPs) {
+    const pct = (count / ipMax * 100).toFixed(0);
+    ipTbody.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="inline-bar" style="width:${Math.min(pct,70)}px"></span>
+            ${key}
+          </div>
+        </td>
+        <td style="text-align:right;color:#eef1f8">${fmt(count)}</td>
+      </tr>`);
+  }
+
+  // ── Response time percentile chart ──
+  if (rt) {
+    new Chart(document.getElementById('chart-rtimes'), {
+      type: 'bar',
+      data: {
+        labels: ['Min', 'p50', 'p75', 'p95', 'p99', 'Max'],
+        datasets: [{
+          data: [rt.min, rt.p50, rt.p75, rt.p95, rt.p99, rt.max],
+          backgroundColor: [rt.min, rt.p50, rt.p75, rt.p95, rt.p99, rt.max].map(msColor),
+          borderWidth: 0,
+          borderRadius: 3,
+        }],
+      },
+      options: {
+        responsive: true,
+        animation: false,
+        plugins: { legend: { display: false },
+          tooltip: { callbacks: { label: ctx => fmtMs(ctx.parsed.y) } }
+        },
+        scales: {
+          x: { grid: { display: false } },
+          y: {
+            beginAtZero: true,
+            grid: { color: '#1e2230' },
+            ticks: { callback: v => fmtMs(v) },
+          },
+        },
+      },
+    });
+  }
+
+  // ── Parse quality ──
+  const pqDiv = document.getElementById('parse-quality-content');
+  const skipTotal = s.skippedLines;
+  const skipReasons = s.skipReasons || {};
+  const parseRate = ((s.parsedLines / (s.totalLines||1)) * 100).toFixed(1);
+
+  let html = `
+    <div style="margin-bottom:16px">
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:28px;font-weight:600;color:${parseFloat(parseRate)>90?'#00c896':parseFloat(parseRate)>70?'#ffb300':'#ff4444'}">${parseRate}%</div>
+      <div style="color:#4a5168;font-size:12px;margin-top:4px">lines successfully parsed</div>
+    </div>
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#4a5168;margin-bottom:8px">SKIP REASONS</div>
+    <ul class="skip-list">
+  `;
+  for (const [reason, count] of Object.entries(skipReasons).sort(([,a],[,b]) => b-a)) {
+    const pct = ((count / (s.totalLines||1)) * 100).toFixed(1);
+    html += `<li><span>${reason}</span><span style="color:#c8cfe0">${fmt(count)} <span style="color:#4a5168">(${pct}%)</span></span></li>`;
+  }
+  if (!Object.keys(skipReasons).length) {
+    html += `<li style="color:#4a5168">No skipped lines</li>`;
+  }
+  html += '</ul>';
+
+  if (s.formatBreakdown) {
+    html += `<div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#4a5168;margin:16px 0 8px">FORMAT MIX</div><ul class="skip-list">`;
+    for (const [fmt2, count] of Object.entries(s.formatBreakdown)) {
+      if (count > 0) html += `<li><span>${fmt2}</span><span style="color:#c8cfe0">${fmt(count)}</span></li>`;
+    }
+    html += '</ul>';
+  }
+
+  pqDiv.innerHTML = html;
+}
+
+loadAndRender().catch(err => {
+  document.getElementById('loading').innerHTML =
+    `<div style="color:#ff4444">Error loading report: ${err.message}</div>`;
+});
+</script>
+</body>
+</html>
